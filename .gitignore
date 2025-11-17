@@ -1,0 +1,57 @@
+# .gitignore for Kubernetes API Workshop
+
+# Java
+*.class
+*.jar
+*.war
+*.ear
+target/
+.mvn/
+*.iml
+.idea/
+.settings/
+.classpath
+.project
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+venv/
+env/
+ENV/
+.venv
+pip-log.txt
+pip-delete-this-directory.txt
+.pytest_cache/
+*.egg-info/
+dist/
+build/
+
+# IDEs
+.vscode/
+*.swp
+*.swo
+*~
+.DS_Store
+
+# Kubernetes
+*.kubeconfig
+kubeconfig
+
+# Logs
+*.log
+logs/
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+
+sa.kubeconfig
