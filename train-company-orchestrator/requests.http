@@ -1,0 +1,13 @@
+### Get Pods Raw
+GET http://localhost:8080/api/k8s/pods/raw
+
+### Get Pods
+GET http://localhost:8080/api/k8s/pods
+
+### Trigger Sleep Job
+POST http://localhost:8080/api/k8s/jobs/sleep
+Content-Type: application/json
+
+{
+  "seconds": 60
+}

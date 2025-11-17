@@ -55,3 +55,4 @@ Thumbs.db
 .cache/
 
 sa.kubeconfig
+ca.crt
