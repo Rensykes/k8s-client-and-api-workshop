@@ -1,13 +1,44 @@
-### Get Pods Raw
-GET http://localhost:8080/api/k8s/pods/raw
-
-### Get Pods
+### Get Pods (parsed)
 GET http://localhost:8080/api/k8s/pods
 
-### Trigger Sleep Job
+### Get Pods Raw (raw JSON)
+GET http://localhost:8080/api/k8s/pods/raw
+
+### Trigger Sleep Job (query param)
+# Example: trigger a job that sleeps for 60s using query param
+POST http://localhost:8080/api/k8s/jobs/sleep?seconds=60
+
+### Trigger Sleep Job (JSON body)
 POST http://localhost:8080/api/k8s/jobs/sleep
 Content-Type: application/json
 
 {
   "seconds": 60
 }
+
+### Save Pod Record (query params)
+# Example: save a pod record via query parameters
+POST http://localhost:8080/api/k8s/pods/record?name=my-pod&namespace=default&status=Running
+
+### Save Pod Record (JSON body)
+# If you prefer JSON bodies, send parameters in the body and the controller will still accept them if adapted.
+POST http://localhost:8080/api/k8s/pods/record
+Content-Type: application/json
+
+{
+  "name": "my-pod",
+  "namespace": "default",
+  "status": "Running"
+}
+
+# cURL equivalents (examples you can run in a terminal)
+# List pods (parsed):
+# curl -sS http://localhost:8080/api/k8s/pods
+# List pods (raw):
+# curl -sS http://localhost:8080/api/k8s/pods/raw
+# Trigger sleep job (query):
+# curl -X POST "http://localhost:8080/api/k8s/jobs/sleep?seconds=60"
+# Trigger sleep job (json):
+# curl -X POST -H "Content-Type: application/json" -d '{"seconds":60}' http://localhost:8080/api/k8s/jobs/sleep
+# Save pod record (query):
+# curl -X POST "http://localhost:8080/api/k8s/pods/record?name=my-pod&namespace=default&status=Running"
