@@ -1,0 +1,13 @@
+.env
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.Python
+*.xlsx
+*.xls
+.git/
+.gitignore
+README.md
+.DS_Store

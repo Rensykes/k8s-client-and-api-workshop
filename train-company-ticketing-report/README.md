@@ -54,3 +54,92 @@ Arguments:
 - `--output` path for the Excel file. Defaults to `ticketing-report.xlsx` in the working directory.
 
 The generated workbook contains a single sheet named **TicketingReport** with one row per ticket, enriched with booking, passenger, trip, and payment insights for downstream analytics.
+
+## Containerization & Kubernetes/OpenShift Deployment
+
+### Building the Container Image
+
+Build the Docker image locally:
+
+```powershell
+# PowerShell
+.\build-and-deploy.ps1
+
+# Or build manually
+docker build -t train-company-ticketing-report:latest .
+```
+
+```bash
+# Linux/macOS
+./build-and-deploy.sh
+
+# Or build manually
+docker build -t train-company-ticketing-report:latest .
+```
+
+### Pushing to a Registry (Optional)
+
+If deploying to a remote Kubernetes/OpenShift cluster, push to your container registry:
+
+```powershell
+docker tag train-company-ticketing-report:latest your-registry/train-company-ticketing-report:latest
+docker push your-registry/train-company-ticketing-report:latest
+```
+
+Update the image reference in `k8s/ticketing-report-job.yaml` to match your registry URL.
+
+### Running as a Kubernetes Job
+
+The `k8s/ticketing-report-job.yaml` manifest contains both a one-time Job and a CronJob for scheduled execution.
+
+**One-time Job:**
+```powershell
+kubectl apply -f ../k8s/ticketing-report-job.yaml
+kubectl get jobs -n train-orchestrator
+kubectl logs -n train-orchestrator job/ticketing-report-job
+```
+
+**CronJob (Monthly on the 1st at 2 AM UTC):**
+```powershell
+# CronJob is automatically created with the manifest
+kubectl get cronjobs -n train-orchestrator
+kubectl get jobs -n train-orchestrator  # View jobs created by the CronJob
+```
+
+### Environment Variables
+
+The Job/CronJob uses these environment variables (configured in the YAML):
+
+- `DB_HOST`: PostgreSQL host (defaults to `postgres` service)
+- `DB_PORT`: PostgreSQL port (defaults to `5432`)
+- `DB_NAME`: Database name (defaults to `traindb`)
+- `DB_USER`: Database username (from `postgres-secret` if available)
+- `DB_PASSWORD`: Database password (from `postgres-secret` if available)
+
+### Customizing the Report Date Range
+
+Edit the `args` section in the Job manifest to customize dates:
+
+```yaml
+args:
+- "--start-date"
+- "2025-01-01"
+- "--end-date"
+- "2025-01-31"
+- "--output"
+- "/reports/ticketing-report.xlsx"
+```
+
+### Running Locally with Docker
+
+```powershell
+docker run --rm \
+  -e DB_HOST=host.docker.internal \
+  -e DB_PORT=5432 \
+  -e DB_NAME=traindb \
+  -e DB_USER=postgres \
+  -e DB_PASSWORD=mysecretpassword \
+  -v ${PWD}/reports:/reports \
+  train-company-ticketing-report:latest \
+  --start-date 2025-01-01 --end-date 2025-01-31
+```

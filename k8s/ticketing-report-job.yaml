@@ -1,0 +1,131 @@
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: ticketing-report-job
+  namespace: train-orchestrator
+  labels:
+    app: ticketing-report
+spec:
+  # Job will be kept for 1 day after completion for troubleshooting
+  ttlSecondsAfterFinished: 86400
+  backoffLimit: 3
+  template:
+    metadata:
+      labels:
+        app: ticketing-report
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: report-generator
+        image: train-company-ticketing-report:latest
+        imagePullPolicy: IfNotPresent
+        env:
+        - name: DB_HOST
+          value: "postgres"
+        - name: DB_PORT
+          value: "5432"
+        - name: DB_NAME
+          value: "traindb"
+        - name: DB_USER
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: username
+              optional: true
+        - name: DB_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgres-secret
+              key: password
+              optional: true
+        args:
+        - "--start-date"
+        - "2025-01-01"
+        - "--end-date"
+        - "2025-01-31"
+        - "--output"
+        - "/reports/ticketing-report.xlsx"
+        volumeMounts:
+        - name: report-output
+          mountPath: /reports
+        resources:
+          requests:
+            memory: "256Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+      volumes:
+      - name: report-output
+        emptyDir: {}
+---
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: ticketing-report-cronjob
+  namespace: train-orchestrator
+  labels:
+    app: ticketing-report
+spec:
+  # Run monthly on the 1st day at 2 AM UTC
+  schedule: "0 2 1 * *"
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  jobTemplate:
+    metadata:
+      labels:
+        app: ticketing-report
+    spec:
+      ttlSecondsAfterFinished: 86400
+      backoffLimit: 3
+      template:
+        metadata:
+          labels:
+            app: ticketing-report
+        spec:
+          restartPolicy: OnFailure
+          containers:
+          - name: report-generator
+            image: train-company-ticketing-report:latest
+            imagePullPolicy: IfNotPresent
+            env:
+            - name: DB_HOST
+              value: "postgres"
+            - name: DB_PORT
+              value: "5432"
+            - name: DB_NAME
+              value: "traindb"
+            - name: DB_USER
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: username
+                  optional: true
+            - name: DB_PASSWORD
+              valueFrom:
+                secretKeyRef:
+                  name: postgres-secret
+                  key: password
+                  optional: true
+            # Generate report for previous month
+            command:
+            - /bin/sh
+            - -c
+            - |
+              # Calculate first and last day of previous month
+              FIRST_DAY=$(date -d "$(date +%Y-%m-01) -1 month" +%Y-%m-01)
+              LAST_DAY=$(date -d "$(date +%Y-%m-01) -1 day" +%Y-%m-%d)
+              python main.py --start-date "$FIRST_DAY" --end-date "$LAST_DAY" --output "/reports/ticketing-report-$(date -d "$FIRST_DAY" +%Y-%m).xlsx"
+            volumeMounts:
+            - name: report-output
+              mountPath: /reports
+            resources:
+              requests:
+                memory: "256Mi"
+                cpu: "100m"
+              limits:
+                memory: "512Mi"
+                cpu: "500m"
+          volumes:
+          - name: report-output
+            emptyDir: {}
