@@ -46,7 +46,7 @@ public class DataSeeder {
                 user.setEmail("user" + i + "@traincompany.com");
                 user.setPasswordHash("hashed_password_" + i);
                 user.setFullName("User " + i);
-                user.setPhone("+1-555-" + String.format("%04d", i));
+                user.setPhone("+1-555-" + "%04d".formatted(i));
                 user.setLocale("en_US");
                 users.add(user);
             }
@@ -61,7 +61,7 @@ public class DataSeeder {
                 p.setLastName("LastName" + (i + 1));
                 p.setDateOfBirth(LocalDate.of(1980 + i, 1 + (i % 12), 1 + (i % 28)));
                 p.setDocumentType(DocumentType.passport);
-                p.setDocumentNumber("PASS" + String.format("%06d", i + 1));
+                p.setDocumentNumber("PASS" + "%06d".formatted(i + 1));
                 passengers.add(p);
             }
             passengerRepository.saveAll(passengers);
