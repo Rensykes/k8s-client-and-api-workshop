@@ -51,6 +51,37 @@ kubectl -n train-orchestrator port-forward svc/train-orchestrator-svc 8080:8080
 curl.exe http://localhost:8080/api/k8s/pods/raw
 ```
 
+PostgreSQL port-forward (access in-cluster Postgres locally)
+-----------------------------------------------------------
+
+If you deployed PostgreSQL in the cluster (see `postgres.yaml`), you can forward the Postgres service port to your local machine to connect with psql or other clients.
+
+PowerShell (forward service `postgres` in namespace `train-orchestrator` to local port 5432):
+
+```powershell
+# forward the service (leave running in a shell)
+kubectl -n train-orchestrator port-forward svc/postgres-svc 5432:5432
+
+# then connect locally (psql example)
+psql "host=localhost port=5432 user=postgres dbname=traindb password=mysecretpassword"
+```
+
+Bash (backgrounded):
+
+```bash
+# forward in background (requires & disown or tmux)
+kubectl -n train-orchestrator port-forward svc/postgres 5432:5432 &
+
+# connect with psql
+psql "host=localhost port=5432 user=postgres dbname=traindb password=mysecretpassword"
+```
+
+Notes & Troubleshooting
+- **Service name & namespace**: confirm the service name and namespace with `kubectl -n train-orchestrator get svc`. The service in this repository is named `postgres` in `postgres.yaml` by default.
+- **Port collisions**: if local port 5432 is in use, choose a different local port, e.g. `localPort:remotePort` like `15432:5432` and connect to that port.
+- **Check target pods**: if forwarding fails, ensure the Postgres pods are running: `kubectl -n train-orchestrator get pods -l app=postgres`.
+- **Forwarding a Pod**: you can port-forward directly to a pod (helpful when Service isn't present): `kubectl -n train-orchestrator port-forward pod/<pod-name> 5432:5432`.
+
 5. Trigger a sleep Job (HTTP POST):
 
 ```powershell
