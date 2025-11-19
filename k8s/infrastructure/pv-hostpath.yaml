@@ -13,7 +13,7 @@ spec:
   storageClassName: hostpath-local
   hostPath:
     # Docker Desktop mounts user home directory - accessible from Windows
-    path: /run/desktop/mnt/host/c/Users/franc/kubernetes-reports
+    path: /run/desktop/mnt/host/c/Users/<username>/kubernetes-reports
     type: DirectoryOrCreate
 
 ---
