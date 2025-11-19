@@ -43,6 +43,48 @@ function Invoke-Provisioning {
     Write-Host "Provisioning complete."
 }
 
+function Invoke-Cleanup {
+    Write-Host "Deleting Ticketing Report Job and CronJob..." -ForegroundColor Yellow
+    kubectl delete -f "${K8sRoot}\infrastructure\ticketing-report-job.yaml" --ignore-not-found
+    
+    Write-Host "Deleting Jobs created by the Spring Boot app (ticketing-report and sleep jobs)..." -ForegroundColor Yellow
+    kubectl delete jobs -n $Namespace -l app=ticketing-report --ignore-not-found
+    kubectl get jobs -n $Namespace --no-headers | Where-Object { $_ -match '^sleep-job-' } | ForEach-Object { 
+        $name = ($_ -split '\s+')[0]
+        kubectl delete job $name -n $Namespace --ignore-not-found 
+    }
+
+    Write-Host "Deleting PersistentVolumeClaim and PersistentVolume..." -ForegroundColor Yellow
+    kubectl delete -f "${K8sRoot}\infrastructure\pv-hostpath.yaml" --ignore-not-found
+
+    Write-Host "Deleting Postgres resources..." -ForegroundColor Yellow
+    kubectl delete -f "${K8sRoot}\infrastructure\postgres.yaml" --ignore-not-found
+
+    Write-Host "Deleting deployment/service in namespace $Namespace..." -ForegroundColor Yellow
+    kubectl delete -f "${K8sRoot}\infrastructure\deployment.yaml" --ignore-not-found
+
+    Write-Host "Deleting RBAC resources..." -ForegroundColor Yellow
+    kubectl delete -f "${K8sRoot}\infrastructure\rbac.yaml" --ignore-not-found
+
+    Write-Host "Deleting namespace $Namespace..." -ForegroundColor Yellow
+    kubectl delete -f "${K8sRoot}\infrastructure\namespace.yaml" --ignore-not-found
+
+    Write-Host "Cleanup complete." -ForegroundColor Green
+    Write-Host "Note: Report files in your local filesystem (C:\Users\<username>\kubernetes-reports) are preserved."
+    
+    # Optionally remove generated SA kubeconfig
+    $saKubeconfigPath = Join-Path $K8sRoot "..\train-company-orchestrator\sa.kubeconfig"
+    if (Test-Path $saKubeconfigPath) {
+        try {
+            Remove-Item $saKubeconfigPath -Force
+            Write-Host "Removed generated SA kubeconfig: $saKubeconfigPath" -ForegroundColor Green
+        }
+        catch {
+            Write-Host "Failed to remove $($saKubeconfigPath): $($_.Exception.Message)" -ForegroundColor Red
+        }
+    }
+}
+
 function Build-DockerImage {
     param(
         [string]$ContextPath,
@@ -76,7 +118,8 @@ function Show-Menu {
     Write-Host "2) Build train-company-ticketing-report image"
     Write-Host "3) Build train-company-orchestrator image"
     Write-Host "4) Generate ServiceAccount kubeconfig (optional)"
-    Write-Host "5) Exit"
+    Write-Host "5) Cleanup provisioned resources"
+    Write-Host "6) Exit"
     Write-Host ""
 }
 
@@ -109,7 +152,11 @@ while ($true) {
             Read-Host "Press Enter to return to menu..." | Out-Null
         }
         '5' {
-            break
+            Invoke-Cleanup
+            Read-Host "Press Enter to return to menu..." | Out-Null
+        }
+        '6' {
+            Exit 0
         }
         default {
             Write-Host "Invalid choice: $choice" -ForegroundColor Yellow
