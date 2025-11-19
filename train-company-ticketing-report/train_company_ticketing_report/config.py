@@ -17,8 +17,20 @@ class DatabaseSettings:
 
     @classmethod
     def from_env(cls) -> "DatabaseSettings":
+        # Prefer an explicit DB_HOST. If not provided, detect whether we're
+        # running inside Kubernetes (presence of KUBERNETES_SERVICE_HOST or KUBERNETES_PORT)
+        # and default to the cluster service name `postgres-svc`. Otherwise default
+        # to localhost for local development.
+        explicit_host = os.getenv("DB_HOST")
+        if explicit_host:
+            host = explicit_host
+        elif os.getenv("KUBERNETES_SERVICE_HOST") or os.getenv("KUBERNETES_PORT"):
+            host = "postgres-svc"
+        else:
+            host = "localhost"
+
         return cls(
-            host=os.getenv("DB_HOST", "localhost"),
+            host=host,
             port=int(os.getenv("DB_PORT", "5432")),
             name=os.getenv("DB_NAME", "traindb"),
             user=os.getenv("DB_USER", "postgres"),
