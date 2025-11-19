@@ -19,7 +19,6 @@ import java.util.List;
 public class ReportStorageService {
 
     private final CoreV1Api coreV1Api;
-    private final ApiClient apiClient;
     private final String namespace = "train-orchestrator";
     private static final String REPORTS_PATH = "/reports";
 
@@ -29,7 +28,6 @@ public class ReportStorageService {
             client = io.kubernetes.client.util.Config.defaultClient();
             Configuration.setDefaultApiClient(client);
         }
-        this.apiClient = client;
         this.coreV1Api = new CoreV1Api(client);
     }
 
