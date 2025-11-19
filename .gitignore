@@ -56,3 +56,4 @@ Thumbs.db
 
 sa.kubeconfig
 ca.crt
+pv-hostpath.yaml
