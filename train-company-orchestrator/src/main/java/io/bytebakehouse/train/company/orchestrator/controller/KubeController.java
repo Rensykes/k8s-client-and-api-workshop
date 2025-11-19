@@ -3,7 +3,10 @@ package io.bytebakehouse.train.company.orchestrator.controller;
 import io.bytebakehouse.train.company.orchestrator.service.PodListService;
 import io.bytebakehouse.train.company.orchestrator.service.PodRecordService;
 import io.bytebakehouse.train.company.orchestrator.service.TicketingReportJobService;
+import io.bytebakehouse.train.company.orchestrator.service.ReportStorageService;
 import io.kubernetes.client.openapi.models.V1PodList;
+import org.springframework.core.io.Resource;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.RequestMapping;
@@ -11,6 +14,7 @@ import org.springframework.web.bind.annotation.RestController;
 import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
+import org.springframework.web.bind.annotation.PathVariable;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -24,15 +28,18 @@ public class KubeController {
     private final io.bytebakehouse.train.company.orchestrator.service.JobService jobService;
     private final PodRecordService podRecordService;
     private final TicketingReportJobService ticketingReportJobService;
+    private final ReportStorageService reportStorageService;
 
     public KubeController(PodListService podListService, 
                           io.bytebakehouse.train.company.orchestrator.service.JobService jobService, 
                           PodRecordService podRecordService,
-                          TicketingReportJobService ticketingReportJobService) {
+                          TicketingReportJobService ticketingReportJobService,
+                          ReportStorageService reportStorageService) {
         this.podListService = podListService;
         this.jobService = jobService;
         this.podRecordService = podRecordService;
         this.ticketingReportJobService = ticketingReportJobService;
+        this.reportStorageService = reportStorageService;
     }
 
     @GetMapping("/pods")
@@ -134,4 +141,35 @@ public class KubeController {
                     .body(Map.of("error", e.getMessage()));
         }
     }
+
+    @GetMapping("/reports")
+    public ResponseEntity<?> listReports() {
+        try {
+            var files = reportStorageService.listReportFiles();
+            return ResponseEntity.ok(Map.of(
+                    "reports", files,
+                    "count", files.size()
+            ));
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/reports/{filename}")
+    public ResponseEntity<Resource> downloadReport(@PathVariable String filename) {
+        try {
+            Resource resource = reportStorageService.downloadReport(filename);
+            
+            return ResponseEntity.ok()
+                    .header(HttpHeaders.CONTENT_DISPOSITION, "attachment; filename=\"" + filename + "\"")
+                    .contentType(MediaType.APPLICATION_OCTET_STREAM)
+                    .body(resource);
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest().build();
+        } catch (Exception e) {
+            return ResponseEntity.status(500).build();
+        }
+    }
 }
+

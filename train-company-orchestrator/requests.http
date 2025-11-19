@@ -69,3 +69,21 @@ POST http://localhost:8080/api/k8s/jobs/ticketing-report
 # curl -X POST http://localhost:8080/api/k8s/jobs/ticketing-report/previous-month
 # Custom date range:
 # curl -X POST "http://localhost:8080/api/k8s/jobs/ticketing-report?startDate=2025-01-01&endDate=2025-01-31"
+
+###############################################################################
+# Report Download Endpoints
+###############################################################################
+
+### List Available Reports
+# Get a list of all Excel reports stored in the PVC
+GET http://localhost:8080/api/k8s/reports
+
+### Download a Specific Report
+# Replace {filename} with the actual filename from the list above
+GET http://localhost:8080/api/k8s/reports/ticketing-report-2025-01-01-to-2025-01-31-12345.xlsx
+
+# cURL equivalents for report downloads:
+# List reports:
+# curl -X GET http://localhost:8080/api/k8s/reports
+# Download a report:
+# curl -X GET http://localhost:8080/api/k8s/reports/ticketing-report-2025-01-01-to-2025-01-31-12345.xlsx -o report.xlsx

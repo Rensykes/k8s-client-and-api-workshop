@@ -20,6 +20,8 @@ public class TicketingReportJobService {
     private final BatchV1Api batchV1Api;
     private final String namespace = "train-orchestrator";
     private static final String IMAGE = "train-company-ticketing-report:latest";
+    private static final String PVC_NAME = "ticketing-reports-pvc";
+    private static final String REPORTS_PATH = "/reports";
 
     public TicketingReportJobService() throws IOException {
         ApiClient client = Configuration.getDefaultApiClient();
@@ -37,9 +39,12 @@ public class TicketingReportJobService {
         DateTimeFormatter formatter = DateTimeFormatter.ISO_LOCAL_DATE;
         String startDateStr = startDate.format(formatter);
         String endDateStr = endDate.format(formatter);
+        
+        // Generate filename with timestamp to avoid conflicts
+        String filename = "ticketing-report-" + startDateStr + "-to-" + endDateStr + "-" + timestamp + ".xlsx";
 
         // Environment variables
-        V1EnvVar dbHost = new V1EnvVar().name("DB_HOST").value("postgres");
+        V1EnvVar dbHost = new V1EnvVar().name("DB_HOST").value("postgres-svc");
         V1EnvVar dbPort = new V1EnvVar().name("DB_PORT").value("5432");
         V1EnvVar dbName = new V1EnvVar().name("DB_NAME").value("traindb");
         
@@ -69,12 +74,12 @@ public class TicketingReportJobService {
                 .args(Arrays.asList(
                         "--start-date", startDateStr,
                         "--end-date", endDateStr,
-                        "--output", "/reports/ticketing-report.xlsx"
+                        "--output", REPORTS_PATH + "/" + filename
                 ))
                 .volumeMounts(Arrays.asList(
                         new V1VolumeMount()
                                 .name("report-output")
-                                .mountPath("/reports")
+                                .mountPath(REPORTS_PATH)
                 ))
                 .resources(new V1ResourceRequirements()
                         .requests(Map.of(
@@ -87,10 +92,11 @@ public class TicketingReportJobService {
                         ))
                 );
 
-        // Volume
+        // Volume - Use PVC instead of emptyDir for persistence
         V1Volume volume = new V1Volume()
                 .name("report-output")
-                .emptyDir(new V1EmptyDirVolumeSource());
+                .persistentVolumeClaim(new V1PersistentVolumeClaimVolumeSource()
+                        .claimName(PVC_NAME));
 
         // Pod specification
         V1PodSpec podSpec = new V1PodSpec()
@@ -116,7 +122,8 @@ public class TicketingReportJobService {
                 .kind("Job")
                 .metadata(new V1ObjectMeta()
                         .name(name)
-                        .labels(Map.of("app", "ticketing-report")))
+                        .labels(Map.of("app", "ticketing-report"))
+                        .annotations(Map.of("report-filename", filename)))
                 .spec(jobSpec);
 
         // Create the Job in the namespace
