@@ -42,3 +42,30 @@ Content-Type: application/json
 # curl -X POST -H "Content-Type: application/json" -d '{"seconds":60}' http://localhost:8080/api/k8s/jobs/sleep
 # Save pod record (query):
 # curl -X POST "http://localhost:8080/api/k8s/pods/record?name=my-pod&namespace=default&status=Running"
+
+###############################################################################
+# Ticketing Report Job Endpoints
+###############################################################################
+
+### Create Ticketing Report Job - Current Month
+# Creates a job for the current month (from 1st to today)
+POST http://localhost:8080/api/k8s/jobs/ticketing-report/current-month
+
+### Create Ticketing Report Job - Previous Month
+# Creates a job for the entire previous month
+POST http://localhost:8080/api/k8s/jobs/ticketing-report/previous-month
+
+### Create Ticketing Report Job - Custom Date Range
+# Creates a job with specific start and end dates
+POST http://localhost:8080/api/k8s/jobs/ticketing-report?startDate=2025-01-01&endDate=2025-01-31
+
+### Create Ticketing Report Job - Current Month (default if no dates provided)
+POST http://localhost:8080/api/k8s/jobs/ticketing-report
+
+# cURL equivalents for ticketing report jobs:
+# Current month:
+# curl -X POST http://localhost:8080/api/k8s/jobs/ticketing-report/current-month
+# Previous month:
+# curl -X POST http://localhost:8080/api/k8s/jobs/ticketing-report/previous-month
+# Custom date range:
+# curl -X POST "http://localhost:8080/api/k8s/jobs/ticketing-report?startDate=2025-01-01&endDate=2025-01-31"
