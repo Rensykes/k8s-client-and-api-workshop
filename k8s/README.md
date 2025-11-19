@@ -1,178 +1,147 @@
-# Train Company Orchestrator — Local cluster scripts
+# Train Company Orchestrator — Kubernetes Setup Scripts
 
-This folder contains setup and cleanup scripts to create the required Kubernetes namespace and RBAC resources, and to deploy the `train-company-orchestrator` application locally (e.g. on minikube / Docker Desktop).
+This folder contains scripts to provision, build, deploy, and clean up the Kubernetes resources for the `train-company-orchestrator` application.
 
 Files:
-- `k8s/setup-cluster.ps1` — PowerShell helper to apply namespace and RBAC.
-- `k8s/cleanup-cluster.ps1` — PowerShell helper to delete resources.
-- `k8s/setup-cluster.sh` — Bash helper to apply namespace and RBAC.
-- `k8s/cleanup-cluster.sh` — Bash helper to delete resources.
+- `script/setup.ps1` — Interactive PowerShell menu to provision infrastructure, build Docker images, deploy applications, generate ServiceAccount kubeconfigs, and cleanup resources.
+- `infrastructure/` — Kubernetes manifests for namespace, RBAC, PostgreSQL, PersistentVolumes, and deployments.
 
 Quick Usage
 
-1. Build the JAR and image (PowerShell):
+**Interactive Setup (Recommended)**
+
+Run the interactive menu script:
+
+```powershell
+cd k8s/script
+.\setup.ps1
+```
+
+Menu options:
+1. Provision k8s infrastructure (namespace, RBAC, PostgreSQL, PV/PVC)
+2. Build train-company-ticketing-report image
+3. Build and deploy train-company-orchestrator image
+4. Generate ServiceAccount kubeconfig
+5. Cleanup provisioned resources
+6. Exit
+
+**Manual Steps**
+
+1. Build the JAR and Docker image:
 
 ```powershell
 cd train-company-orchestrator
 mvn -DskipTests package
-docker build -t train-company-orchestrator:latest . -f Dockerfile
+docker build -t train-company-orchestrator:latest .
 ```
 
-If you use `minikube` and want to load the image into the cluster:
+If using `minikube`:
 
 ```powershell
 minikube image load train-company-orchestrator:latest
 ```
 
-2. Create the cluster resources (PowerShell):
+2. Create cluster resources:
 
 ```powershell
 cd ../k8s
-.\setup-cluster.ps1
+kubectl apply -f infrastructure/namespace.yaml
+kubectl apply -f infrastructure/rbac.yaml
+kubectl apply -f infrastructure/postgres.yaml
+kubectl apply -f infrastructure/pv-hostpath.yaml
 ```
 
-Or using Bash:
-
-```bash
-cd ../k8s
-./setup-cluster.sh
-```
-
-3. Deploy the app:
+3. Deploy the application:
 
 ```powershell
-kubectl apply -f deployment.yaml
+kubectl apply -f infrastructure/train-company-orchestrator.yaml
 ```
 
-4. Port-forward and test the pod-listing endpoint:
+4. Port-forward and test:
 
 ```powershell
 kubectl -n train-orchestrator port-forward svc/train-orchestrator-svc 8080:8080
-curl.exe http://localhost:8080/api/k8s/pods/raw
+curl http://localhost:8080/api/k8s/pods/raw
 ```
 
-PostgreSQL port-forward (access in-cluster Postgres locally)
+PostgreSQL Port-Forward
 -----------------------------------------------------------
 
-If you deployed PostgreSQL in the cluster (see `postgres.yaml`), you can forward the Postgres service port to your local machine to connect with psql or other clients.
-
-PowerShell (forward service `postgres` in namespace `train-orchestrator` to local port 5432):
+Forward the PostgreSQL service to access it locally:
 
 ```powershell
-# forward the service (leave running in a shell)
 kubectl -n train-orchestrator port-forward svc/postgres-svc 5432:5432
-
-# then connect locally (psql example)
 psql "host=localhost port=5432 user=postgres dbname=traindb password=mysecretpassword"
 ```
 
-Bash (backgrounded):
+Testing Endpoints
+-----------------
 
-```bash
-# forward in background (requires & disown or tmux)
-kubectl -n train-orchestrator port-forward svc/postgres 5432:5432 &
-
-# connect with psql
-psql "host=localhost port=5432 user=postgres dbname=traindb password=mysecretpassword"
-```
-
-Notes & Troubleshooting
-- **Service name & namespace**: confirm the service name and namespace with `kubectl -n train-orchestrator get svc`. The service in this repository is named `postgres` in `postgres.yaml` by default.
-- **Port collisions**: if local port 5432 is in use, choose a different local port, e.g. `localPort:remotePort` like `15432:5432` and connect to that port.
-- **Check target pods**: if forwarding fails, ensure the Postgres pods are running: `kubectl -n train-orchestrator get pods -l app=postgres`.
-- **Forwarding a Pod**: you can port-forward directly to a pod (helpful when Service isn't present): `kubectl -n train-orchestrator port-forward pod/<pod-name> 5432:5432`.
-
-5. Trigger a sleep Job (HTTP POST):
+Trigger a sleep Job:
 
 ```powershell
-curl.exe -X POST "http://localhost:8080/api/k8s/jobs/sleep?seconds=60"
+curl -X POST "http://localhost:8080/api/k8s/jobs/sleep?seconds=60"
 ```
 
-6. Cleanup resources (PowerShell):
+Cleanup
+-------
+
+Use the interactive script (option 5) or manually delete resources:
 
 ```powershell
-cd ../k8s
-.\cleanup-cluster.ps1
+cd k8s
+kubectl delete -f infrastructure/train-company-orchestrator.yaml
+kubectl delete -f infrastructure/postgres.yaml
+kubectl delete -f infrastructure/pv-hostpath.yaml
+kubectl delete -f infrastructure/rbac.yaml
+kubectl delete -f infrastructure/namespace.yaml
 ```
 
-Or using Bash:
-
-```bash
-./cleanup-cluster.sh
-```
-
-Troubleshooting
-- Ensure `kubectl` is configured to talk to the correct cluster.
-- If using Docker Desktop with minikube, ensure `minikube` is installed and running or use `docker build` + `minikube image load` per above.
-
-Run Locally (without deploying to the cluster)
+Run Locally (Outside Kubernetes)
 ---------------------------------------------
 
-You can run the Spring Boot app locally and have it talk to the Kubernetes cluster using your kubeconfig (recommended for development). The app will behave like `kubectl` and use the same credentials/contexts.
+Run the Spring Boot app locally and have it talk to the Kubernetes cluster using your kubeconfig.
 
-PowerShell example:
+**Option 1: Use default kubeconfig**
 
 ```powershell
-# Ensure kubectl points to the right cluster
-kubectl config current-context
-
-# Optional: point the app to a specific kubeconfig file
-$env:KUBECONFIG = 'C:\Users\you\.kube\config'
-
-# Build and run
-cd ..\train-company-orchestrator
+cd train-company-orchestrator
 mvn -DskipTests package
 java -jar target\train-company-orchestrator-0.0.1-SNAPSHOT.jar
-
-# In another shell test the endpoints
-curl.exe http://localhost:8080/api/k8s/pods/raw
-curl.exe -X POST "http://localhost:8080/api/k8s/jobs/sleep?seconds=60"
 ```
 
-Bash example:
+**Option 2: Use ServiceAccount kubeconfig (least-privileged)**
 
-```bash
-# Ensure kubectl points to the right cluster
-kubectl config current-context
+Generate the ServiceAccount kubeconfig using the setup script (menu option 4), then:
 
-# Optional: use a specific kubeconfig
-export KUBECONFIG="$HOME/.kube/config"
+```powershell
+$env:KUBECONFIG = "path\to\sa.kubeconfig"
+cd train-company-orchestrator
+java -jar target\train-company-orchestrator-0.0.1-SNAPSHOT.jar
+```
 
-cd ../train-company-orchestrator
-mvn -DskipTests package
-java -jar target/train-company-orchestrator-0.0.1-SNAPSHOT.jar
+Test endpoints:
 
-# Test endpoints
+```powershell
 curl http://localhost:8080/api/k8s/pods/raw
 curl -X POST "http://localhost:8080/api/k8s/jobs/sleep?seconds=60"
 ```
 
-Run with a ServiceAccount token (least-privileged)
-------------------------------------------------
-If you prefer the app to use the same ServiceAccount as the in-cluster deployment (recommended for demos that require least privilege), create a kubeconfig that uses the service account token and run the jar with `KUBECONFIG` pointing to it.
+When To Use A ServiceAccount Kubeconfig
+--------------------------------------
 
-```bash
-# Create a token (kubectl >= 1.24)
-kubectl -n train-orchestrator create token orchestrator-sa --duration=24h > sa.token
-TOKEN=$(cat sa.token)
-SERVER=$(kubectl config view -o jsonpath='{.clusters[0].cluster.server}')
-CLUSTER_NAME=$(kubectl config view -o jsonpath='{.clusters[0].name}')
+- **Optional for local development:** your default kubeconfig already allows the app to authenticate with the cluster; a ServiceAccount kubeconfig is not required unless you want to restrict permissions.
+- **Use it to test least-privilege behavior:** if you want to verify the application works with the same RBAC rules you apply to pods in-cluster, run the app with a ServiceAccount kubeconfig.
+- **Good for demos and CI:** use a short-lived ServiceAccount token for reproducible demos or automated pipelines without relying on a personal admin kubeconfig.
 
-# Save CA if needed
-kubectl get secret -n train-orchestrator $(kubectl -n train-orchestrator get sa orchestrator-sa -o jsonpath='{.secrets[0].name}') -o go-template='{{ .data."ca.crt" }}' | base64 --decode > ca.crt
+Security notes:
 
-# Build minimal kubeconfig
-kubectl config --kubeconfig=sa.kubeconfig set-cluster $CLUSTER_NAME --server=$SERVER --certificate-authority=ca.crt
-kubectl config --kubeconfig=sa.kubeconfig set-credentials orchestrator-sa --token="$TOKEN"
-kubectl config --kubeconfig=sa.kubeconfig set-context orchestrator --cluster=$CLUSTER_NAME --user=orchestrator-sa
-kubectl config --kubeconfig=sa.kubeconfig use-context orchestrator
+- Treat generated kubeconfigs as secrets (they contain bearer tokens). Remove them when finished.
+- Use short durations on tokens and restrict the ServiceAccount RBAC to the minimum required.
 
-# Run the app with the SA kubeconfig
-export KUBECONFIG=$(pwd)/sa.kubeconfig
-java -jar target/train-company-orchestrator-0.0.1-SNAPSHOT.jar
-```
-
-Use kubectl proxy as an alternative
------------------------------------
-If you don't want to provide cluster credentials to the app, you can run `kubectl proxy` locally and point the client's base URL to `http://127.0.0.1:8001`. This requires modifying the code to use a custom base path or setting the API client's base path before creating `CoreV1Api`.
+Troubleshooting
+- Ensure `kubectl` is configured correctly: `kubectl config current-context`
+- Check pod status: `kubectl -n train-orchestrator get pods`
+- View logs: `kubectl -n train-orchestrator logs -l app=train-orchestrator --tail=50`
+- If using minikube, ensure images are loaded: `minikube image ls`
 

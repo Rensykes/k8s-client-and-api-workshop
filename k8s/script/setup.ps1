@@ -61,7 +61,7 @@ function Invoke-Cleanup {
     kubectl delete -f "${K8sRoot}\infrastructure\postgres.yaml" --ignore-not-found
 
     Write-Host "Deleting deployment/service in namespace $Namespace..." -ForegroundColor Yellow
-    kubectl delete -f "${K8sRoot}\infrastructure\deployment.yaml" --ignore-not-found
+    kubectl delete -f "${K8sRoot}\infrastructure\train-company-orchestrator.yaml" --ignore-not-found
 
     Write-Host "Deleting RBAC resources..." -ForegroundColor Yellow
     kubectl delete -f "${K8sRoot}\infrastructure\rbac.yaml" --ignore-not-found
@@ -82,6 +82,145 @@ function Invoke-Cleanup {
         catch {
             Write-Host "Failed to remove $($saKubeconfigPath): $($_.Exception.Message)" -ForegroundColor Red
         }
+    }
+}
+
+# When to use a ServiceAccount kubeconfig (optional):
+# - Not required for local development: your default kubeconfig (KUBECONFIG or ~/.kube/config)
+#   already provides credentials and network access to the API server. The app will use
+#   those credentials when run locally.
+# - Use a ServiceAccount kubeconfig to test least-privilege behavior, reproduce the
+#   in-cluster ServiceAccount permissions, or run demos/CI with non-personal credentials.
+# - Generated kubeconfigs contain bearer tokens: treat them as secrets and use short
+#   durations. The setup script includes a helper (menu option 4) to create a token-based
+#   kubeconfig for the `orchestrator-sa` ServiceAccount.
+#
+# Example (one-time):
+#   $env:KUBECONFIG = 'path\\to\\sa.kubeconfig'
+#   java -jar ../train-company-orchestrator/target/train-company-orchestrator-0.0.1-SNAPSHOT.jar
+function New-ServiceAccountKubeconfig {
+    param(
+        [string]$Namespace = "train-orchestrator",
+        [string]$ServiceAccount = "orchestrator-sa",
+        [string]$OutputPath = "..\train-company-orchestrator\sa.kubeconfig",
+        [int]$DurationHours = 24,
+        [switch]$ExportToSession = $false
+    )
+
+    Write-Host "=== Generating ServiceAccount Kubeconfig ===" -ForegroundColor Cyan
+    Write-Host "Namespace: $Namespace" -ForegroundColor Gray
+    Write-Host "ServiceAccount: $ServiceAccount" -ForegroundColor Gray
+    Write-Host "Token Duration: ${DurationHours}h" -ForegroundColor Gray
+    Write-Host ""
+
+    # Ensure namespace exists
+    $nsExists = kubectl get namespace $Namespace --ignore-not-found 2>$null
+    if (-not $nsExists) {
+        Write-Host "Namespace '$Namespace' not found. Creating..." -ForegroundColor Yellow
+        kubectl create namespace $Namespace
+    }
+
+    # Ensure ServiceAccount exists
+    $saExists = kubectl -n $Namespace get sa $ServiceAccount --ignore-not-found 2>$null
+    if (-not $saExists) {
+        Write-Host "ServiceAccount '$ServiceAccount' not found. Creating..." -ForegroundColor Yellow
+        kubectl -n $Namespace create sa $ServiceAccount
+    }
+
+    # Create token
+    Write-Host "Creating token for ServiceAccount..." -ForegroundColor Cyan
+    $tokenFile = New-TemporaryFile
+    try {
+        kubectl -n $Namespace create token $ServiceAccount --duration=${DurationHours}h | Out-File -FilePath $tokenFile -Encoding ascii
+        $token = (Get-Content $tokenFile -Raw).Trim()
+        
+        if ([string]::IsNullOrWhiteSpace($token)) {
+            throw "Failed to create token - empty token received"
+        }
+
+        # Get cluster information
+        Write-Host "Fetching cluster server and CA..." -ForegroundColor Cyan
+        $server = kubectl config view -o jsonpath='{.clusters[0].cluster.server}'
+        $clusterName = kubectl config view -o jsonpath='{.clusters[0].name}'
+        $caBase64 = kubectl config view -o jsonpath='{.clusters[0].cluster.certificate-authority-data}'
+        
+        if ([string]::IsNullOrEmpty($caBase64)) {
+            throw "No certificate-authority-data found in current kubeconfig"
+        }
+
+        # Write CA certificate
+        $caBytes = [System.Convert]::FromBase64String($caBase64)
+        $caCrtPath = Join-Path $ScriptDir "ca.crt"
+        [System.IO.File]::WriteAllBytes($caCrtPath, $caBytes)
+
+        # Resolve output path
+        $fullOutputPath = Join-Path $K8sRoot $OutputPath
+        $outputDir = Split-Path -Parent $fullOutputPath
+        if (-not (Test-Path $outputDir)) {
+            New-Item -ItemType Directory -Path $outputDir -Force | Out-Null
+        }
+
+        # Build kubeconfig
+        Write-Host "Building kubeconfig file..." -ForegroundColor Cyan
+        kubectl config --kubeconfig=$fullOutputPath set-cluster $clusterName --server=$server --certificate-authority=$caCrtPath --embed-certs=true | Out-Null
+        kubectl config --kubeconfig=$fullOutputPath set-credentials $ServiceAccount --token="$token" | Out-Null
+        kubectl config --kubeconfig=$fullOutputPath set-context orchestrator --cluster=$clusterName --user=$ServiceAccount --namespace=$Namespace | Out-Null
+        kubectl config --kubeconfig=$fullOutputPath use-context orchestrator | Out-Null
+
+        # Cleanup temp files
+        Remove-Item $tokenFile -Force -ErrorAction SilentlyContinue
+        Remove-Item $caCrtPath -Force -ErrorAction SilentlyContinue
+
+        Write-Host ""
+        Write-Host "=== Kubeconfig Generated Successfully ===" -ForegroundColor Green
+        Write-Host "Location: $fullOutputPath" -ForegroundColor Green
+        Write-Host ""
+        Write-Host "=== How to Use This Kubeconfig ===" -ForegroundColor Cyan
+        Write-Host ""
+        Write-Host "Option 1: Use with kubectl commands (one-time):" -ForegroundColor Yellow
+        Write-Host "  kubectl --kubeconfig=`"$fullOutputPath`" get pods -n $Namespace" -ForegroundColor White
+        Write-Host ""
+        Write-Host "Option 2: Set as environment variable (current session):" -ForegroundColor Yellow
+        Write-Host "  `$env:KUBECONFIG = `"$fullOutputPath`"" -ForegroundColor White
+        Write-Host "  kubectl get pods -n $Namespace" -ForegroundColor White
+        Write-Host ""
+        Write-Host "Option 3: Set KUBECONFIG before running mvn spring-boot:run:" -ForegroundColor Yellow
+        Write-Host "  `$env:KUBECONFIG = `"$fullOutputPath`"" -ForegroundColor White
+        Write-Host "  cd ..\train-company-orchestrator" -ForegroundColor White
+        Write-Host "  mvn spring-boot:run" -ForegroundColor White
+        Write-Host ""
+        Write-Host "Note: This token expires in ${DurationHours} hours" -ForegroundColor Magenta
+        Write-Host "Note: The ServiceAccount has limited RBAC permissions (only what's defined in rbac.yaml)" -ForegroundColor Magenta
+        Write-Host ""
+
+        # Offer to export the generated kubeconfig into the current PowerShell session
+        $doExport = $false
+        if ($ExportToSession) {
+            $doExport = $true
+        }
+        else {
+            try {
+                $answer = Read-Host "Export kubeconfig to current session as `$env:KUBECONFIG ? (Y/n)"
+                if ([string]::IsNullOrWhiteSpace($answer) -or $answer -match '^(y|Y)') { $doExport = $true }
+            }
+            catch {
+                # Non-interactive session: skip export
+                $doExport = $false
+            }
+        }
+
+        if ($doExport) {
+            $env:KUBECONFIG = $fullOutputPath
+            Write-Host "Exported environment variable: `\$env:KUBECONFIG = $fullOutputPath" -ForegroundColor Green
+            Write-Host "(This only affects the current PowerShell session)" -ForegroundColor Gray
+        }
+    }
+    catch {
+        Write-Host "Error generating kubeconfig: $($_.Exception.Message)" -ForegroundColor Red
+        # Cleanup on error
+        Remove-Item $tokenFile -Force -ErrorAction SilentlyContinue
+        Remove-Item $caCrtPath -Force -ErrorAction SilentlyContinue
+        throw
     }
 }
 
@@ -115,9 +254,9 @@ function Show-Menu {
     Clear-Host
     Write-Host "Interactive setup - choose an option:`n"
     Write-Host "1) Provision k8s infrastructure"
-    Write-Host "2) Build train-company-ticketing-report image"
-    Write-Host "3) Build train-company-orchestrator image"
-    Write-Host "4) Generate ServiceAccount kubeconfig (optional)"
+    Write-Host "2) Generate ServiceAccount kubeconfig (optional)"
+    Write-Host "3) Build train-company-ticketing-report image"
+    Write-Host "4) Build train-company-orchestrator image"
     Write-Host "5) Cleanup provisioned resources"
     Write-Host "6) Exit"
     Write-Host ""
@@ -125,7 +264,7 @@ function Show-Menu {
 
 while ($true) {
     Show-Menu
-    $choice = Read-Host "Enter choice (1-5)"
+    $choice = Read-Host "Enter choice (1-6)"
     switch ($choice) {
         '1' {
             Invoke-Provisioning
@@ -133,22 +272,29 @@ while ($true) {
             Read-Host "Press Enter to return to menu..." | Out-Null
         }
         '2' {
+            New-ServiceAccountKubeconfig -Namespace $Namespace -ServiceAccount $ServiceAccount -OutputPath $SAKubeconfigOutput -DurationHours $DurationHours
+            Read-Host "Press Enter to return to menu..." | Out-Null
+        }
+        '3' {
             $ctx = Join-Path $K8sRoot "..\train-company-ticketing-report"
             if (-not (Test-Path $ctx)) { $ctx = Join-Path $ScriptDir "..\..\train-company-ticketing-report" }
             Build-DockerImage -ContextPath $ctx -ImageTag "train-company-ticketing-report:latest"
             Read-Host "Press Enter to return to menu..." | Out-Null
         }
-        '3' {
+        '4' {
             $ctx = Join-Path $K8sRoot "..\train-company-orchestrator"
             if (-not (Test-Path $ctx)) { $ctx = Join-Path $ScriptDir "..\..\train-company-orchestrator" }
             Build-DockerImage -ContextPath $ctx -ImageTag "train-company-orchestrator:latest"
-            Read-Host "Press Enter to return to menu..." | Out-Null
-        }
-        '4' {
-            if (Test-Path (Join-Path $K8sRoot "..\train-company-orchestrator\generate-sa-kubeconfig.ps1")) {
-                & (Join-Path $K8sRoot "..\train-company-orchestrator\generate-sa-kubeconfig.ps1") -Namespace $Namespace -ServiceAccount $ServiceAccount -Output $SAKubeconfigOutput -DurationHours $DurationHours
+            if ($LASTEXITCODE -eq 0) {
+                Write-Host "Deploying train-company-orchestrator to Kubernetes..." -ForegroundColor Cyan
+                kubectl apply -f "${K8sRoot}\infrastructure\train-company-orchestrator.yaml"
+                Write-Host "Deployment applied. Verify with:" -ForegroundColor Green
+                Write-Host "  kubectl -n $Namespace get deploy,svc,pods"
+                Write-Host "  kubectl -n $Namespace logs -l app=train-orchestrator --tail=50"
             }
-            else { Write-Host "generate-sa-kubeconfig.ps1 not found." -ForegroundColor Yellow }
+            else {
+                Write-Host "Skipping deployment due to build failure." -ForegroundColor Red
+            }
             Read-Host "Press Enter to return to menu..." | Out-Null
         }
         '5' {
@@ -166,15 +312,8 @@ while ($true) {
 }
 
 if ($GenerateSAKubeconfig) {
-    Write-Host "Generating ServiceAccount kubeconfig using generate-sa-kubeconfig.ps1..."
-    $genScript = Join-Path $K8sRoot "..\train-company-orchestrator\generate-sa-kubeconfig.ps1"
-    if (Test-Path $genScript) {
-        & $genScript -Namespace $Namespace -ServiceAccount $ServiceAccount -Output $SAKubeconfigOutput -DurationHours $DurationHours
-        Write-Host "Generated kubeconfig: $SAKubeconfigOutput"
-    }
-    else {
-        Write-Host "generate-sa-kubeconfig.ps1 not found at $genScript"
-    }
+    Write-Host "Generating ServiceAccount kubeconfig..."
+    New-ServiceAccountKubeconfig -Namespace $Namespace -ServiceAccount $ServiceAccount -OutputPath $SAKubeconfigOutput -DurationHours $DurationHours
 }
 if ($PauseAtEnd) {
     Write-Host ""

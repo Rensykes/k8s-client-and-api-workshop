@@ -79,7 +79,7 @@ cd train-company-orchestrator
 .\mvnw spring-boot:run
 
 # Or deploy to Kubernetes
-kubectl apply -f ../k8s/deployment.yaml
+kubectl apply -f ../k8s/train-company-orchestrator.yaml
 ```
 
 ## Step 3: Create a Report Job
