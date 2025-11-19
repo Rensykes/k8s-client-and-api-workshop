@@ -21,7 +21,7 @@ spec:
         imagePullPolicy: IfNotPresent
         env:
         - name: DB_HOST
-          value: "postgres"
+          value: "postgres-svc"
         - name: DB_PORT
           value: "5432"
         - name: DB_NAME
@@ -57,7 +57,8 @@ spec:
             cpu: "500m"
       volumes:
       - name: report-output
-        emptyDir: {}
+        persistentVolumeClaim:
+          claimName: ticketing-reports-pvc
 ---
 apiVersion: batch/v1
 kind: CronJob
@@ -90,7 +91,7 @@ spec:
             imagePullPolicy: IfNotPresent
             env:
             - name: DB_HOST
-              value: "postgres"
+              value: "postgres-svc"
             - name: DB_PORT
               value: "5432"
             - name: DB_NAME
@@ -128,4 +129,5 @@ spec:
                 cpu: "500m"
           volumes:
           - name: report-output
-            emptyDir: {}
+            persistentVolumeClaim:
+              claimName: ticketing-reports-pvc
