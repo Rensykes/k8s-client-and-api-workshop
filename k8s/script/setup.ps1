@@ -13,16 +13,16 @@ $K8sRoot = (Resolve-Path (Join-Path $ScriptDir "..")).Path
 
 function Invoke-Provisioning {
     Write-Host "Creating namespace: $Namespace"
-    kubectl apply -f "${K8sRoot}\infrastructure\namespace.yaml"
+    kubectl apply -f "${K8sRoot}\infrastructure\namespace.yaml" --validate=false
 
     Write-Host "Applying RBAC resources..."
-    kubectl apply -f "${K8sRoot}\infrastructure\rbac.yaml"
+    kubectl apply -f "${K8sRoot}\infrastructure\rbac.yaml" --validate=false
 
     Write-Host "Applying Postgres resources..."
-    kubectl apply -f "${K8sRoot}\infrastructure\postgres.yaml"
+    kubectl apply -f "${K8sRoot}\infrastructure\postgres.yaml" --validate=false
 
     Write-Host "Applying PersistentVolume and PersistentVolumeClaim for reports..."
-    kubectl apply -f "${K8sRoot}\infrastructure\pv-hostpath.yaml"
+    kubectl apply -f "${K8sRoot}\infrastructure\pv-hostpath.yaml" --validate=false
 
     # OPTIONAL:
     # Write-Host "Applying Ticketing Report Job and CronJob..."
@@ -287,7 +287,7 @@ while ($true) {
             Build-DockerImage -ContextPath $ctx -ImageTag "train-company-orchestrator:latest"
             if ($LASTEXITCODE -eq 0) {
                 Write-Host "Deploying train-company-orchestrator to Kubernetes..." -ForegroundColor Cyan
-                kubectl apply -f "${K8sRoot}\infrastructure\train-company-orchestrator.yaml"
+                kubectl apply -f "${K8sRoot}\infrastructure\train-company-orchestrator.yaml" --validate=false
                 Write-Host "Deployment applied. Verify with:" -ForegroundColor Green
                 Write-Host "  kubectl -n $Namespace get deploy,svc,pods"
                 Write-Host "  kubectl -n $Namespace logs -l app=train-orchestrator --tail=50"
