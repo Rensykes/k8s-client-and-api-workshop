@@ -1,0 +1,699 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ticketing Report Dashboard</title>
+    <script src="https://cdn.jsdelivr.net/npm/sockjs-client@1/dist/sockjs.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/stompjs@2.3.3/lib/stomp.min.js"></script>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu, Cantarell, sans-serif;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            min-height: 100vh;
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1400px;
+            margin: 0 auto;
+        }
+
+        header {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        h1 {
+            color: #333;
+            font-size: 2em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1em;
+        }
+
+        .connection-status {
+            display: inline-block;
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            margin-left: 15px;
+        }
+
+        .connection-status.connected {
+            background: #d4edda;
+            color: #155724;
+        }
+
+        .connection-status.disconnected {
+            background: #f8d7da;
+            color: #721c24;
+        }
+
+        .controls {
+            background: white;
+            padding: 20px 30px;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            margin-bottom: 30px;
+        }
+
+        .button-group {
+            display: flex;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+
+        button {
+            padding: 12px 24px;
+            border: none;
+            border-radius: 8px;
+            font-size: 1em;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        button:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+        }
+
+        .btn-primary {
+            background: #667eea;
+            color: white;
+        }
+
+        .btn-secondary {
+            background: #764ba2;
+            color: white;
+        }
+
+        .btn-refresh {
+            background: #48bb78;
+            color: white;
+        }
+
+        .dashboard-grid {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 30px;
+            margin-bottom: 30px;
+        }
+
+        .card {
+            background: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+            overflow: hidden;
+        }
+
+        .card-header {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 20px 30px;
+            font-size: 1.3em;
+            font-weight: 600;
+        }
+
+        .card-body {
+            padding: 30px;
+        }
+
+        .job-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .job-item {
+            border: 1px solid #e2e8f0;
+            border-radius: 8px;
+            padding: 20px;
+            margin-bottom: 15px;
+            transition: all 0.3s ease;
+        }
+
+        .job-item:hover {
+            box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+            transform: translateX(5px);
+        }
+
+        .job-item.monitoring {
+            background: #f0f9ff;
+            border-color: #0ea5e9;
+            border-width: 2px;
+        }
+
+        .job-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 15px;
+        }
+
+        .job-name {
+            font-weight: 700;
+            font-size: 1.1em;
+            color: #1a202c;
+        }
+
+        .status-badge {
+            padding: 6px 14px;
+            border-radius: 20px;
+            font-size: 0.85em;
+            font-weight: 600;
+            text-transform: uppercase;
+        }
+
+        .status-badge.running {
+            background: #fef3c7;
+            color: #92400e;
+        }
+
+        .status-badge.succeeded {
+            background: #d1fae5;
+            color: #065f46;
+        }
+
+        .status-badge.failed {
+            background: #fee2e2;
+            color: #991b1b;
+        }
+
+        .status-badge.pending {
+            background: #e0e7ff;
+            color: #3730a3;
+        }
+
+        .job-details {
+            display: grid;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
+            color: #4a5568;
+            font-size: 0.9em;
+        }
+
+        .job-detail {
+            display: flex;
+            flex-direction: column;
+        }
+
+        .detail-label {
+            font-weight: 600;
+            color: #718096;
+            font-size: 0.85em;
+            margin-bottom: 4px;
+        }
+
+        .detail-value {
+            color: #1a202c;
+        }
+
+        .progress-bar {
+            width: 100%;
+            height: 8px;
+            background: #e2e8f0;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-top: 15px;
+        }
+
+        .progress-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #667eea 0%, #764ba2 100%);
+            transition: width 0.3s ease;
+        }
+
+        .report-list {
+            max-height: 600px;
+            overflow-y: auto;
+        }
+
+        .report-item {
+            border-bottom: 1px solid #e2e8f0;
+            padding: 15px 0;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .report-item:last-child {
+            border-bottom: none;
+        }
+
+        .report-name {
+            font-weight: 500;
+            color: #1a202c;
+            flex: 1;
+            word-break: break-all;
+        }
+
+        .report-actions {
+            display: flex;
+            gap: 10px;
+        }
+
+        .download-btn {
+            padding: 8px 16px;
+            background: #48bb78;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+        }
+
+        .download-btn:hover {
+            background: #38a169;
+            transform: scale(1.05);
+        }
+
+        .delete-btn {
+            padding: 8px 16px;
+            background: #f56565;
+            color: white;
+            border: none;
+            border-radius: 6px;
+            cursor: pointer;
+            font-size: 0.9em;
+            transition: all 0.3s ease;
+        }
+
+        .delete-btn:hover {
+            background: #e53e3e;
+            transform: scale(1.05);
+        }
+
+        .empty-state {
+            text-align: center;
+            padding: 60px 20px;
+            color: #718096;
+        }
+
+        .empty-state-icon {
+            font-size: 4em;
+            margin-bottom: 20px;
+            opacity: 0.5;
+        }
+
+        .monitoring-indicator {
+            display: inline-block;
+            width: 10px;
+            height: 10px;
+            background: #0ea5e9;
+            border-radius: 50%;
+            margin-left: 10px;
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0%, 100% { opacity: 1; }
+            50% { opacity: 0.3; }
+        }
+
+        .stats {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            margin-bottom: 20px;
+        }
+
+        .stat-card {
+            background: #f7fafc;
+            padding: 20px;
+            border-radius: 8px;
+            text-align: center;
+        }
+
+        .stat-value {
+            font-size: 2em;
+            font-weight: 700;
+            color: #667eea;
+        }
+
+        .stat-label {
+            font-size: 0.9em;
+            color: #718096;
+            margin-top: 5px;
+        }
+
+        @media (max-width: 1024px) {
+            .dashboard-grid {
+                grid-template-columns: 1fr;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <div style="display: flex; justify-content: space-between; align-items: center;">
+                <div>
+                    <h1>📊 Ticketing Report Dashboard</h1>
+                    <p class="subtitle">Real-time monitoring of report generation jobs</p>
+                </div>
+                <div>
+                    <span class="connection-status" id="connectionStatus">Connecting...</span>
+                </div>
+            </div>
+        </header>
+
+        <div class="controls">
+            <div class="button-group">
+                <button class="btn-primary" onclick="createCurrentMonthReport()">
+                    📅 Current Month Report
+                </button>
+                <button class="btn-secondary" onclick="createPreviousMonthReport()">
+                    📅 Previous Month Report
+                </button>
+                <button class="btn-refresh" onclick="refreshAll()">
+                    🔄 Refresh All
+                </button>
+            </div>
+        </div>
+
+        <div class="dashboard-grid">
+            <div class="card">
+                <div class="card-header">Active & Recent Jobs</div>
+                <div class="card-body">
+                    <div class="stats">
+                        <div class="stat-card">
+                            <div class="stat-value" id="runningCount">0</div>
+                            <div class="stat-label">Running</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="succeededCount">0</div>
+                            <div class="stat-label">Succeeded</div>
+                        </div>
+                        <div class="stat-card">
+                            <div class="stat-value" id="failedCount">0</div>
+                            <div class="stat-label">Failed</div>
+                        </div>
+                    </div>
+                    <div class="job-list" id="jobList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">🔍</div>
+                            <p>No jobs found. Create a report to get started!</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card">
+                <div class="card-header">Available Reports</div>
+                <div class="card-body">
+                    <div class="report-list" id="reportList">
+                        <div class="empty-state">
+                            <div class="empty-state-icon">📄</div>
+                            <p>No reports available yet.</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        let stompClient = null;
+        let jobs = new Map();
+        let reconnectAttempts = 0;
+        let maxReconnectAttempts = 10;
+
+        // Connect to WebSocket
+        function connect() {
+            const socket = new SockJS('/ws-job-status');
+            stompClient = Stomp.over(socket);
+            
+            // Enable debug logging
+            stompClient.debug = function(str) {
+                console.log('[STOMP]', str);
+            };
+            
+            stompClient.connect({}, function (frame) {
+                console.log('✅ WebSocket Connected:', frame);
+                updateConnectionStatus(true);
+                reconnectAttempts = 0;
+                
+                // Subscribe to job status updates
+                stompClient.subscribe('/topic/job-status', function (message) {
+                    console.log('📨 Received job status update:', message.body);
+                    try {
+                        const jobStatus = JSON.parse(message.body);
+                        updateJob(jobStatus);
+                    } catch (e) {
+                        console.error('Error parsing job status:', e);
+                    }
+                });
+                
+                // Load initial data
+                loadAllJobs();
+                loadReports();
+            }, function(error) {
+                console.error('❌ WebSocket connection error:', error);
+                updateConnectionStatus(false);
+                
+                // Retry connection with exponential backoff
+                reconnectAttempts++;
+                if (reconnectAttempts < maxReconnectAttempts) {
+                    const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+                    console.log(`⏳ Reconnecting in ${delay/1000}s (attempt ${reconnectAttempts}/${maxReconnectAttempts})...`);
+                    setTimeout(connect, delay);
+                } else {
+                    console.error('❌ Max reconnection attempts reached. Please refresh the page.');
+                }
+            });
+            
+            // Handle connection close
+            socket.onclose = function() {
+                console.warn('⚠️ WebSocket connection closed');
+                updateConnectionStatus(false);
+            };
+        }
+
+        function updateConnectionStatus(connected) {
+            const statusEl = document.getElementById('connectionStatus');
+            if (connected) {
+                statusEl.textContent = '🟢 Connected';
+                statusEl.className = 'connection-status connected';
+            } else {
+                statusEl.textContent = '🔴 Disconnected';
+                statusEl.className = 'connection-status disconnected';
+            }
+        }
+
+        function updateJob(jobStatus) {
+            console.log('🔄 Updating job:', jobStatus.jobName, 'Status:', jobStatus.status);
+            jobs.set(jobStatus.jobName, jobStatus);
+            renderJobs();
+            
+            // Refresh reports when a job succeeds
+            if (jobStatus.status === 'Succeeded') {
+                console.log('✅ Job succeeded, refreshing reports in 2 seconds...');
+                setTimeout(loadReports, 2000);
+            } else if (jobStatus.status === 'Failed') {
+                console.log('❌ Job failed:', jobStatus.jobName);
+            }
+        }
+
+        function loadAllJobs() {
+            fetch('/api/k8s/jobs/all')
+                .then(response => response.json())
+                .then(jobList => {
+                    jobs.clear();
+                    jobList.forEach(job => jobs.set(job.jobName, job));
+                    renderJobs();
+                })
+                .catch(error => console.error('Error loading jobs:', error));
+        }
+
+        function renderJobs() {
+            const jobList = document.getElementById('jobList');
+            
+            if (jobs.size === 0) {
+                jobList.innerHTML = `
+                    <div class="empty-state">
+                        <div class="empty-state-icon">🔍</div>
+                        <p>No jobs found. Create a report to get started!</p>
+                    </div>
+                `;
+                updateStats(0, 0, 0);
+                return;
+            }
+
+            let running = 0, succeeded = 0, failed = 0;
+            
+            const sortedJobs = Array.from(jobs.values()).sort((a, b) => 
+                new Date(b.creationTimestamp) - new Date(a.creationTimestamp)
+            );
+
+            jobList.innerHTML = sortedJobs.map(job => {
+                if (job.status === 'Running') running++;
+                if (job.status === 'Succeeded') succeeded++;
+                if (job.status === 'Failed') failed++;
+
+                return `
+                    <div class="job-item ${job.monitoring ? 'monitoring' : ''}">
+                        <div class="job-header">
+                            <div class="job-name">
+                                ${job.jobName}
+                                ${job.monitoring ? '<span class="monitoring-indicator"></span>' : ''}
+                            </div>
+                            <span class="status-badge ${job.status.toLowerCase()}">${job.status}</span>
+                        </div>
+                        <div class="job-details">
+                            <div class="job-detail">
+                                <span class="detail-label">Created</span>
+                                <span class="detail-value">${formatDate(job.creationTimestamp)}</span>
+                            </div>
+                            <div class="job-detail">
+                                <span class="detail-label">Duration</span>
+                                <span class="detail-value">${formatDuration(job.durationSeconds)}</span>
+                            </div>
+                            ${job.startDate ? `
+                            <div class="job-detail">
+                                <span class="detail-label">Period</span>
+                                <span class="detail-value">${job.startDate} to ${job.endDate}</span>
+                            </div>
+                            ` : ''}
+                            <div class="job-detail">
+                                <span class="detail-label">Pods</span>
+                                <span class="detail-value">
+                                    Active: ${job.active || 0} | 
+                                    Succeeded: ${job.succeeded || 0} | 
+                                    Failed: ${job.failed || 0}
+                                </span>
+                            </div>
+                        </div>
+                        ${job.status === 'Running' ? `
+                        <div class="progress-bar">
+                            <div class="progress-fill" style="width: 50%;"></div>
+                        </div>
+                        ` : ''}
+                    </div>
+                `;
+            }).join('');
+
+            updateStats(running, succeeded, failed);
+        }
+
+        function updateStats(running, succeeded, failed) {
+            document.getElementById('runningCount').textContent = running;
+            document.getElementById('succeededCount').textContent = succeeded;
+            document.getElementById('failedCount').textContent = failed;
+        }
+
+        function loadReports() {
+            fetch('/api/k8s/reports')
+                .then(response => response.json())
+                .then(data => {
+                    const reportList = document.getElementById('reportList');
+                    
+                    if (!data.reports || data.reports.length === 0) {
+                        reportList.innerHTML = `
+                            <div class="empty-state">
+                                <div class="empty-state-icon">📄</div>
+                                <p>No reports available yet.</p>
+                            </div>
+                        `;
+                        return;
+                    }
+
+                    reportList.innerHTML = data.reports.sort().reverse().map(report => `
+                        <div class="report-item">
+                            <div class="report-name">📊 ${report}</div>
+                            <div class="report-actions">
+                                <button class="download-btn" onclick="downloadReport('${report}')">
+                                    ⬇️ Download
+                                </button>
+                                <button class="delete-btn" onclick="deleteReport('${report}')">
+                                    🗑️ Delete
+                                </button>
+                            </div>
+                        </div>
+                    `).join('');
+                })
+                .catch(error => console.error('Error loading reports:', error));
+        }
+
+        function createCurrentMonthReport() {
+            fetch('/api/k8s/jobs/ticketing-report/current-month', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Job created:', data);
+                    setTimeout(loadAllJobs, 1000);
+                })
+                .catch(error => console.error('Error creating job:', error));
+        }
+
+        function createPreviousMonthReport() {
+            fetch('/api/k8s/jobs/ticketing-report/previous-month', { method: 'POST' })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Job created:', data);
+                    setTimeout(loadAllJobs, 1000);
+                })
+                .catch(error => console.error('Error creating job:', error));
+        }
+
+        function downloadReport(filename) {
+            window.location.href = `/api/k8s/reports/${filename}`;
+        }
+
+        function deleteReport(filename) {
+            if (!confirm(`Are you sure you want to delete ${filename}?`)) {
+                return;
+            }
+
+            fetch(`/api/k8s/reports/${filename}`, { method: 'DELETE' })
+                .then(response => response.json())
+                .then(data => {
+                    console.log('Report deleted:', data);
+                    loadReports();
+                })
+                .catch(error => {
+                    console.error('Error deleting report:', error);
+                    alert('Failed to delete report');
+                });
+        }
+
+        function refreshAll() {
+            loadAllJobs();
+            loadReports();
+        }
+
+        function formatDate(dateString) {
+            if (!dateString) return 'N/A';
+            const date = new Date(dateString);
+            return date.toLocaleString();
+        }
+
+        function formatDuration(seconds) {
+            if (!seconds) return '0s';
+            if (seconds < 60) return `${seconds}s`;
+            const minutes = Math.floor(seconds / 60);
+            const secs = seconds % 60;
+            return `${minutes}m ${secs}s`;
+        }
+
+        // Connect on page load
+        connect();
+
+        // Auto-refresh reports every 10 seconds
+        setInterval(loadReports, 10000);
+    </script>
+</body>
+</html>

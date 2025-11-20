@@ -53,15 +53,15 @@ function Invoke-Cleanup {
         $name = ($_ -split '\s+')[0]
         kubectl delete job $name -n $Namespace --ignore-not-found 
     }
+    
+    Write-Host "Deleting deployment/service in namespace $Namespace..." -ForegroundColor Yellow
+    kubectl delete -f "${K8sRoot}\infrastructure\train-company-orchestrator.yaml" --ignore-not-found  --force --grace-period=0
 
     Write-Host "Deleting PersistentVolumeClaim and PersistentVolume..." -ForegroundColor Yellow
     kubectl delete -f "${K8sRoot}\infrastructure\pv-hostpath.yaml" --ignore-not-found
 
     Write-Host "Deleting Postgres resources..." -ForegroundColor Yellow
     kubectl delete -f "${K8sRoot}\infrastructure\postgres.yaml" --ignore-not-found
-
-    Write-Host "Deleting deployment/service in namespace $Namespace..." -ForegroundColor Yellow
-    kubectl delete -f "${K8sRoot}\infrastructure\train-company-orchestrator.yaml" --ignore-not-found
 
     Write-Host "Deleting RBAC resources..." -ForegroundColor Yellow
     kubectl delete -f "${K8sRoot}\infrastructure\rbac.yaml" --ignore-not-found

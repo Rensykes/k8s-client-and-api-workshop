@@ -5,6 +5,8 @@ import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.BatchV1Api;
 import io.kubernetes.client.openapi.models.*;
+import io.kubernetes.client.util.Config;
+
 import org.springframework.stereotype.Service;
 
 import java.io.IOException;
@@ -17,15 +19,17 @@ import java.util.Map;
 public class TicketingReportJobService {
 
     private final BatchV1Api batchV1Api;
+    private final JobStatusService jobStatusService;
     private final String namespace = "train-orchestrator";
     private static final String IMAGE = "train-company-ticketing-report:latest";
     private static final String PVC_NAME = "ticketing-reports-pvc";
     private static final String REPORTS_PATH = "/reports";
 
-    public TicketingReportJobService() throws IOException {
+    public TicketingReportJobService(JobStatusService jobStatusService) throws IOException {
+        this.jobStatusService = jobStatusService;
         ApiClient client = Configuration.getDefaultApiClient();
         if (client == null) {
-            client = io.kubernetes.client.util.Config.defaultClient();
+            client = Config.defaultClient();
             Configuration.setDefaultApiClient(client);
         }
         this.batchV1Api = new BatchV1Api();
@@ -126,7 +130,12 @@ public class TicketingReportJobService {
                 .spec(jobSpec);
 
         // Create the Job in the namespace
-        return batchV1Api.createNamespacedJob(namespace, job).execute();
+        V1Job createdJob = batchV1Api.createNamespacedJob(namespace, job).execute();
+        
+        // Start monitoring the job for real-time status updates
+        jobStatusService.startMonitoring(name);
+        
+        return createdJob;
     }
 
     public V1Job createTicketingReportJobForCurrentMonth() throws Exception {

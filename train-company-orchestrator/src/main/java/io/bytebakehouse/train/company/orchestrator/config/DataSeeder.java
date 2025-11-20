@@ -15,6 +15,8 @@ import java.time.OffsetDateTime;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.UUID;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 @Configuration
 public class DataSeeder {
@@ -37,6 +39,7 @@ public class DataSeeder {
             PaymentRepository paymentRepository,
             SeatReservationRepository seatReservationRepository
     ) {
+        Logger log = LoggerFactory.getLogger(DataSeeder.class);
         return args -> {
             // Users
             List<UserAccount> users = new ArrayList<>();
@@ -228,21 +231,20 @@ public class DataSeeder {
                 reservations.get(i).setTicket(tickets.get(i));
             }
             seatReservationRepository.saveAll(reservations);
-            //TODO: Replace with Logger
-            System.out.println("✅ Database seeded with sample data:");
-            System.out.println("   - " + users.size() + " users");
-            System.out.println("   - " + passengers.size() + " passengers");
-            System.out.println("   - " + stations.size() + " stations");
-            System.out.println("   - " + routes.size() + " routes");
-            System.out.println("   - " + trains.size() + " trains");
-            System.out.println("   - " + carriages.size() + " carriages");
-            System.out.println("   - " + seats.size() + " seats");
-            System.out.println("   - " + fares.size() + " fares");
-            System.out.println("   - " + trips.size() + " trips");
-            System.out.println("   - " + bookings.size() + " bookings");
-            System.out.println("   - " + tickets.size() + " tickets");
-            System.out.println("   - " + payments.size() + " payments");
-            System.out.println("   - " + reservations.size() + " seat reservations");
+            log.info("✅ Database seeded with sample data:");
+            log.info("   - {} users", users.size());
+            log.info("   - {} passengers", passengers.size());
+            log.info("   - {} stations", stations.size());
+            log.info("   - {} routes", routes.size());
+            log.info("   - {} trains", trains.size());
+            log.info("   - {} carriages", carriages.size());
+            log.info("   - {} seats", seats.size());
+            log.info("   - {} fares", fares.size());
+            log.info("   - {} trips", trips.size());
+            log.info("   - {} bookings", bookings.size());
+            log.info("   - {} tickets", tickets.size());
+            log.info("   - {} payments", payments.size());
+            log.info("   - {} seat reservations", reservations.size());
         };
     }
 }

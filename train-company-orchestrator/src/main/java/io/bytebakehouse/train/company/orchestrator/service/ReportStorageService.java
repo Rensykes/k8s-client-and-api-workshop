@@ -1,12 +1,19 @@
 package io.bytebakehouse.train.company.orchestrator.service;
 
 import io.kubernetes.client.Copy;
+import io.kubernetes.client.Exec;
 import io.kubernetes.client.openapi.ApiClient;
 import io.kubernetes.client.openapi.Configuration;
 import io.kubernetes.client.openapi.apis.CoreV1Api;
+import io.kubernetes.client.util.Config;
+
 import org.springframework.core.io.ByteArrayResource;
 import org.springframework.core.io.Resource;
 import org.springframework.stereotype.Service;
+
+import com.fasterxml.jackson.databind.DeserializationFeature;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 
 import java.io.ByteArrayOutputStream;
 import java.io.IOException;
@@ -25,7 +32,7 @@ public class ReportStorageService {
     public ReportStorageService() throws IOException {
         ApiClient client = Configuration.getDefaultApiClient();
         if (client == null) {
-            client = io.kubernetes.client.util.Config.defaultClient();
+            client = Config.defaultClient();
             Configuration.setDefaultApiClient(client);
         }
         this.coreV1Api = new CoreV1Api(client);
@@ -35,7 +42,23 @@ public class ReportStorageService {
      * List all report files by finding a ticketing-report job pod
      */
     public List<String> listReportFiles() throws Exception {
-        // Find any running or recently completed ticketing-report job pod
+        // First try to list files directly from the mounted PVC
+        try {
+            Path reportsDir = Path.of(REPORTS_PATH);
+            if (Files.exists(reportsDir) && Files.isDirectory(reportsDir)) {
+                return Files.list(reportsDir)
+                        .filter(Files::isRegularFile)
+                        .map(Path::getFileName)
+                        .map(Path::toString)
+                        .filter(name -> name.endsWith(".xlsx"))
+                        .sorted()
+                        .toList();
+            }
+        } catch (Exception e) {
+            // If direct access fails, fall through to pod-based approach
+        }
+        
+        // Fallback: Find any running or recently completed ticketing-report job pod
         String podName = findReportJobPod();
         
         if (podName == null) {
@@ -72,7 +95,18 @@ public class ReportStorageService {
             throw new IllegalArgumentException("Invalid filename");
         }
         
-        // Find a ticketing-report job pod
+        // First try to read directly from the mounted PVC
+        try {
+            Path reportFile = Path.of(REPORTS_PATH, filename);
+            if (Files.exists(reportFile) && Files.isRegularFile(reportFile)) {
+                byte[] content = Files.readAllBytes(reportFile);
+                return new ByteArrayResource(content);
+            }
+        } catch (Exception e) {
+            // If direct access fails, fall through to pod-based approach
+        }
+        
+        // Fallback: Find a ticketing-report job pod
         String podName = findReportJobPod();
         
         if (podName == null) {
@@ -95,6 +129,41 @@ public class ReportStorageService {
         } finally {
             // Clean up temp file
             Files.deleteIfExists(tempFile);
+        }
+    }
+
+    /**
+     * Delete a specific report file
+     */
+    public boolean deleteReport(String filename) throws Exception {
+        // Validate filename to prevent path traversal
+        if (filename.contains("..") || filename.contains("/") || filename.contains("\\")) {
+            throw new IllegalArgumentException("Invalid filename");
+        }
+        
+        // Try to delete directly from the mounted PVC
+        try {
+            Path reportFile = Path.of(REPORTS_PATH, filename);
+            if (Files.exists(reportFile) && Files.isRegularFile(reportFile)) {
+                Files.delete(reportFile);
+                return true;
+            }
+        } catch (Exception e) {
+            // If direct access fails, fall through to pod-based approach
+        }
+        
+        // Fallback: Find a ticketing-report job pod and exec rm command
+        String podName = findReportJobPod();
+        
+        if (podName == null) {
+            throw new RuntimeException("No ticketing-report pod found and cannot access file system directly.");
+        }
+        
+        try {
+            execInPod(podName, new String[]{"rm", "-f", REPORTS_PATH + "/" + filename});
+            return true;
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to delete report: " + e.getMessage(), e);
         }
     }
 
@@ -142,16 +211,16 @@ public class ReportStorageService {
                     return null;
                 }
 
-                com.fasterxml.jackson.databind.ObjectMapper mapper = new com.fasterxml.jackson.databind.ObjectMapper();
-                mapper.configure(com.fasterxml.jackson.databind.DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
-                com.fasterxml.jackson.databind.JsonNode root = mapper.readTree(output);
-                com.fasterxml.jackson.databind.JsonNode items = root.path("items");
+                ObjectMapper mapper = new ObjectMapper();
+                mapper.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+                JsonNode root = mapper.readTree(output);
+                JsonNode items = root.path("items");
                 if (!items.isArray() || items.size() == 0) {
                     return null;
                 }
 
                 // Prefer Running or Succeeded
-                for (com.fasterxml.jackson.databind.JsonNode item : items) {
+                for (JsonNode item : items) {
                     String phase = item.path("status").path("phase").asText("");
                     if ("Running".equals(phase) || "Succeeded".equals(phase)) {
                         return item.path("metadata").path("name").asText(null);
@@ -168,7 +237,7 @@ public class ReportStorageService {
     }
 
     private String execInPod(String podName, String[] command) throws Exception {
-        io.kubernetes.client.Exec exec = new io.kubernetes.client.Exec();
+        Exec exec = new Exec();
         
         try (ByteArrayOutputStream out = new ByteArrayOutputStream()) {
             Process process = exec.exec(namespace, podName, command, false, false);

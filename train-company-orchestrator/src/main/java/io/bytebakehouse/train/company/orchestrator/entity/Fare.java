@@ -55,7 +55,7 @@ public class Fare extends AuditableEntity {
     @JdbcTypeCode(SqlTypes.NAMED_ENUM)
     @Column(name = "refund_policy", columnDefinition = "fare_refund_policy")
     private FareRefundPolicy refundPolicy = FareRefundPolicy.non_refundable;
-    //TODO: Replace with local datetime
+
     @Column(name = "valid_from")
     private OffsetDateTime validFrom;
 

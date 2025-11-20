@@ -4,6 +4,8 @@ import io.bytebakehouse.train.company.orchestrator.service.PodListService;
 import io.bytebakehouse.train.company.orchestrator.service.PodRecordService;
 import io.bytebakehouse.train.company.orchestrator.service.TicketingReportJobService;
 import io.bytebakehouse.train.company.orchestrator.service.ReportStorageService;
+import io.bytebakehouse.train.company.orchestrator.service.JobService;
+import io.bytebakehouse.train.company.orchestrator.service.JobStatusService;
 import io.kubernetes.client.openapi.models.V1PodList;
 import org.springframework.core.io.Resource;
 import org.springframework.http.HttpHeaders;
@@ -15,6 +17,7 @@ import org.springframework.http.MediaType;
 import org.springframework.web.bind.annotation.PostMapping;
 import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.DeleteMapping;
 
 import java.time.LocalDate;
 import java.time.format.DateTimeParseException;
@@ -25,21 +28,24 @@ import java.util.Map;
 public class KubeController {
 
     private final PodListService podListService;
-    private final io.bytebakehouse.train.company.orchestrator.service.JobService jobService;
+    private final JobService jobService;
     private final PodRecordService podRecordService;
     private final TicketingReportJobService ticketingReportJobService;
     private final ReportStorageService reportStorageService;
+    private final JobStatusService jobStatusService;
 
     public KubeController(PodListService podListService, 
-                          io.bytebakehouse.train.company.orchestrator.service.JobService jobService, 
+                          JobService jobService, 
                           PodRecordService podRecordService,
                           TicketingReportJobService ticketingReportJobService,
-                          ReportStorageService reportStorageService) {
+                          ReportStorageService reportStorageService,
+                          JobStatusService jobStatusService) {
         this.podListService = podListService;
         this.jobService = jobService;
         this.podRecordService = podRecordService;
         this.ticketingReportJobService = ticketingReportJobService;
         this.reportStorageService = reportStorageService;
+        this.jobStatusService = jobStatusService;
     }
 
     @GetMapping("/pods")
@@ -169,6 +175,39 @@ public class KubeController {
             return ResponseEntity.badRequest().build();
         } catch (Exception e) {
             return ResponseEntity.status(500).build();
+        }
+    }
+
+    @DeleteMapping("/reports/{filename}")
+    public ResponseEntity<?> deleteReport(@PathVariable String filename) {
+        try {
+            boolean deleted = reportStorageService.deleteReport(filename);
+            if (deleted) {
+                return ResponseEntity.ok(Map.of(
+                        "message", "Report deleted successfully",
+                        "filename", filename
+                ));
+            } else {
+                return ResponseEntity.status(404)
+                        .body(Map.of("error", "Report not found"));
+            }
+        } catch (IllegalArgumentException e) {
+            return ResponseEntity.badRequest()
+                    .body(Map.of("error", e.getMessage()));
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(Map.of("error", e.getMessage()));
+        }
+    }
+
+    @GetMapping("/jobs/all")
+    public ResponseEntity<?> getAllJobs() {
+        try {
+            var jobs = jobStatusService.getAllJobs();
+            return ResponseEntity.ok(jobs);
+        } catch (Exception e) {
+            return ResponseEntity.status(500)
+                    .body(Map.of("error", e.getMessage()));
         }
     }
 }
