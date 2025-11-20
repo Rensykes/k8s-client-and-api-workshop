@@ -8,13 +8,14 @@ This document provides a comprehensive overview of the Train Company Orchestrato
 
 1. [System Overview](#system-overview)
 2. [Quick Start Guide](#quick-start-guide)
-3. [Architecture Components](#architecture-components)
-4. [Storage Configuration](#storage-configuration)
-5. [Generating Reports](#generating-reports)
-6. [Accessing Reports](#accessing-reports)
-7. [Scheduling Reports](#scheduling-reports)
-8. [Troubleshooting](#troubleshooting)
-9. [Complete Setup Guide](#complete-setup-guide)
+3. [Real-Time Dashboard](#real-time-dashboard)
+4. [Architecture Components](#architecture-components)
+5. [Storage Configuration](#storage-configuration)
+6. [Generating Reports](#generating-reports)
+7. [Accessing Reports](#accessing-reports)
+8. [Scheduling Reports](#scheduling-reports)
+9. [Troubleshooting](#troubleshooting)
+10. [Complete Setup Guide](#complete-setup-guide)
 
 ---
 
@@ -206,6 +207,140 @@ curl.exe http://localhost:8080/api/k8s/reports
 # Download specific report
 curl.exe -o report.xlsx http://localhost:8080/api/k8s/reports/ticketing-report-2025-01.xlsx
 ```
+
+---
+
+## Real-Time Dashboard
+
+## Real-Time Job Monitoring Dashboard
+
+### Overview
+
+The dashboard is a hands-on demonstration of how to leverage the Kubernetes API from a Java application. It provides a real-time web interface for monitoring Kubernetes job execution and managing report downloads, using WebSocket technology for live updates. This is a core part of the workshop, showing practical Kubernetes API integration.
+
+### Key Features
+
+- **Real-Time Job Monitoring**: See job status updates as they happen via WebSocket
+- **Live Statistics**: Track running, succeeded, and failed jobs at a glance
+- **One-Click Report Generation**: Create reports for current month, previous month, or custom date ranges
+- **Report Download**: List and download all available Excel reports
+- **Visual Status Indicators**: Color-coded badges and progress animations
+- **Auto-Refresh**: Reports list refreshes automatically every 10 seconds
+- **Responsive Design**: Beautiful gradient UI that works on all screen sizes
+
+### Architecture
+
+```
+┌──────────────┐         WebSocket          ┌─────────────────┐
+│              │◄──────────────────────────►│                 │
+│   Browser    │         STOMP/SockJS       │  Spring Boot    │
+│  Dashboard   │                             │  Orchestrator   │
+│              │         REST API            │                 │
+│              │◄──────────────────────────►│                 │
+└──────────────┘                             └────────┬────────┘
+                           │
+                           │
+                      ┌────────▼────────┐
+                      │  JobStatusService│
+                      │  (Polls K8s API) │
+                      └────────┬────────┘
+                           │
+                           │
+                      ┌────────▼────────┐
+                      │  Kubernetes API  │
+                      │  (Job Status)    │
+                      └──────────────────┘
+```
+
+#### Technology Stack
+
+**Backend**
+- Spring Boot (Application framework)
+- Spring WebSocket (WebSocket support with STOMP protocol)
+- Kubernetes Java Client (Job monitoring and status retrieval)
+- Spring Scheduling (Periodic job status polling every 2 seconds)
+
+**Frontend**
+- SockJS (WebSocket client library with fallback support)
+- STOMP.js (Messaging protocol over WebSocket)
+- Vanilla JavaScript (No framework dependencies)
+- CSS3 (Modern gradients and animations)
+
+### How It Works
+
+1. **Job Created**: User triggers a report job via the dashboard or API.
+2. **JobStatusService**: Starts monitoring the job using the Kubernetes Java Client.
+3. **Scheduler**: Polls Kubernetes every 2 seconds for job status changes.
+4. **WebSocket Broadcast**: Status changes are pushed to all connected browsers in real time.
+5. **UI Update**: Dashboard updates automatically, showing job progress and results.
+
+#### Example WebSocket Flow
+
+```javascript
+const socket = new SockJS('/ws-job-status');
+const stompClient = Stomp.over(socket);
+stompClient.subscribe('/topic/job-status', function (message) {
+  const jobStatus = JSON.parse(message.body);
+  updateJob(jobStatus);
+});
+```
+
+#### Example Job Monitoring (Java)
+
+```java
+@Scheduled(fixedRate = 2000)
+public void pollJobStatus() {
+  // Check each monitored job
+  messagingTemplate.convertAndSend("/topic/job-status", status);
+}
+```
+
+### Dashboard Interface
+
+- **Header**: Shows "📊 Ticketing Report Dashboard" and real-time connection status (🟢 Connected / 🔴 Disconnected)
+- **Control Panel**: Quick-action buttons for current/previous month report, refresh
+- **Active & Recent Jobs**: Statistics cards, job list with status badges, monitoring indicator, pod stats, progress bars
+- **Available Reports**: List of Excel reports, download buttons, auto-refresh every 10 seconds
+- **Empty States**: Friendly messages when no jobs/reports
+
+#### Status Indicators
+
+| Color | Status     | Meaning                  |
+|-------|------------|--------------------------|
+| 🟡    | RUNNING    | Job is executing         |
+| 🟢    | SUCCEEDED  | Job completed successfully|
+| 🔴    | FAILED     | Job failed               |
+| 🔵    | PENDING    | Job waiting to start     |
+| 🔵    | MONITORING | Live updates active      |
+
+### API Endpoints Used
+
+| Endpoint                                         | Method | Purpose                                 |
+|--------------------------------------------------|--------|-----------------------------------------|
+| `/ws-job-status`                                 | WS     | Real-time job status updates (STOMP/SockJS) |
+| `/api/k8s/jobs/ticketing-report/current-month`    | POST   | Create current month report job         |
+| `/api/k8s/jobs/ticketing-report/previous-month`   | POST   | Create previous month report job        |
+| `/api/k8s/jobs/all`                              | GET    | Fetch all ticketing report jobs         |
+| `/api/k8s/reports`                               | GET    | List available Excel reports            |
+| `/api/k8s/reports/{filename}`                    | GET    | Download specific report                |
+
+
+### Troubleshooting
+
+| Problem                | Solution                                                      |
+|------------------------|---------------------------------------------------------------|
+| Dashboard won't load   | Check if Spring Boot is running at port 8080                  |
+| Shows disconnected     | Refresh page; restart Spring Boot                             |
+| Jobs not updating      | Verify connection status is green                             |
+| No reports showing     | Click "Refresh All" or wait 10 seconds                       |
+
+### Learning Outcomes: Kubernetes API in Practice
+
+- **Kubernetes Java Client**: Learn how to interact with Kubernetes from Java, including job creation, status polling, and resource management.
+- **WebSocket Integration**: See how real-time updates can be pushed from backend to frontend using STOMP/SockJS.
+- **Persistent Storage**: Understand how to use PVCs and hostPath for sharing files between pods and accessing them from Windows.
+- **RESTful API Design**: Practice building endpoints for job control and file download.
+- **UI/UX for Monitoring**: Build a responsive dashboard that visualizes Kubernetes job activity in real time.
 
 ---
 
