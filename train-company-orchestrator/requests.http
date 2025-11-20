@@ -82,8 +82,23 @@ GET http://localhost:8080/api/k8s/reports
 # Replace {filename} with the actual filename from the list above
 GET http://localhost:8080/api/k8s/reports/ticketing-report-2025-01-01-to-2025-01-31-12345.xlsx
 
+### Get All Jobs Status
+# Get status of all ticketing report jobs
+GET http://localhost:8080/api/k8s/jobs/all
+
+###############################################################################
+# Dashboard
+###############################################################################
+
+### Open Dashboard
+# Opens the real-time monitoring dashboard in your browser
+# @name dashboard
+GET http://localhost:8080/dashboard.html
+
 # cURL equivalents for report downloads:
 # List reports:
 # curl -X GET http://localhost:8080/api/k8s/reports
 # Download a report:
 # curl -X GET http://localhost:8080/api/k8s/reports/ticketing-report-2025-01-01-to-2025-01-31-12345.xlsx -o report.xlsx
+# Get all jobs:
+# curl -X GET http://localhost:8080/api/k8s/jobs/all
