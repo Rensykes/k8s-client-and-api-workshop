@@ -27,6 +27,9 @@ spec:
               value: "postgres"
             - name: SPRING_DATASOURCE_PASSWORD
               value: "mysecretpassword"
+          volumeMounts:
+            - name: reports-volume
+              mountPath: /reports
           resources:
             requests:
               cpu: "100m"
@@ -34,6 +37,10 @@ spec:
             limits:
               cpu: "500m"
               memory: "512Mi"
+      volumes:
+        - name: reports-volume
+          persistentVolumeClaim:
+            claimName: ticketing-reports-pvc
 
 ---
 apiVersion: v1
